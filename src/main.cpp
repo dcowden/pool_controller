@@ -51,31 +51,37 @@ float celsiusToFahrenheit(float tempC) {
 
 // ====== HTTP Handlers ======
 void handleRoot() {
+  char html[512];  // Adjust size as needed
 
-  String html = "<!DOCTYPE html><html><head><title>ESP32 Pool Controller</title></head><body>";
-  html += "<h1ESP32 Pool Controller</h1>";
-  
   if (isnan(tempC)) {
-    html += "<p>Error reading temperature.</p>";
+    snprintf(html, sizeof(html),
+      "<!DOCTYPE html><html><head><title>ESP32 Pool Controller</title></head><body>"
+      "<h1>ESP32 Pool Controller</h1>"
+      "<p>Error reading temperature.</p>"
+      "</body></html>"
+    );
   } else {
-    html += "<p>Current Temperature: " + String(tempC, 2) + "&deg;C (" + String(tempF, 2) + "&deg;F)</p>";
+    snprintf(html, sizeof(html),
+      "<!DOCTYPE html><html><head><title>ESP32 Pool Controller</title></head><body>"
+      "<h1>ESP32 Pool Controller</h1>"
+      "<p>Current Temperature: %.2f&deg;C (%.2f&deg;F)</p>"
+      "</body></html>",
+      tempC, tempF
+    );
   }
-  
-  html += "</body></html>";
+
   server.send(200, "text/html", html);
 }
 
 void handleGetTemperature() {
+  char json[256];  // Adjust size as needed
 
-  
-  String json = "{\"temperature_c\": " + String(tempC, 2)  
-    +  ", \"temperature_f\": "  + String(tempF, 2) 
-    + ", \"sun_level\": " + String(sunLevel) 
-    + ", \"heater\": " +  String(heater_on ? "true" : "false")    
-    + "}";
+  snprintf(json, sizeof(json),
+    "{\"temperature_c\": %.2f, \"temperature_f\": %.2f, \"sun_level\": %d, \"heater\": %s}",
+    tempC, tempF, sunLevel, heater_on ? "true" : "false"
+  );
 
   server.send(200, "application/json", json);
-
 }
 
 // ====== Setup and Loop ======
