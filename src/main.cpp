@@ -1,10 +1,11 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
-#include <max6675.h>
 #include "RunningAverage.h"
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <DallasTemperature.h>
+#include <OneWire.h>
 
 void updateTemperature();
 void updateSolarHeater();
@@ -17,11 +18,13 @@ const char* password = "allthethings!";
 const int thermoSCK = 18;
 const int thermoCS  = 5;
 const int thermoSO  = 19;
+const int ONE_WIRE_PIN = GPIO_NUM_39;
 const int SOLAR_RELAY_PIN = 26;
 const int SUN_PANEL_PIN = GPIO_NUM_36;
 const float  SUN_ON_LEVEL = 2900.0;
 const int TEMP_UPDATE_INTERVAL_MILLIS = 5000;
 const int NUM_SUN_SAMPLES=50;
+const int MAIN_TEMP_INDEX=0;
 
 //local vars
 int heater_on = 0;
@@ -31,19 +34,20 @@ int sunLevel = 0;
 unsigned long lastTempUpdate = 0;
 unsigned long lastSolarUpdate = 0;
 
-
-MAX6675 thermocouple(thermoSCK, thermoCS, thermoSO);
 AsyncWebServer  server(80);
 RunningAverage sunLevelAvg(NUM_SUN_SAMPLES);
+OneWire oneWire(ONE_WIRE_PIN);
+DallasTemperature temp_sensors(&oneWire);
 
 // ====== Read Temperature Helper ======
 float readTemperatureC() {
-  float tempC = thermocouple.readCelsius();
-  if (isnan(tempC) || tempC < -100.0) {
+  temp_sensors.requestTemperatures();
+  float tC = temp_sensors.requestTemperaturesByIndex(MAIN_TEMP_INDEX);
+  if (isnan(tC) || tC < -100.0) {
     Serial.println("Error: Invalid temperature reading");
     return NAN;
   }
-  return tempC;
+  return tC;
 }
 
 
@@ -58,7 +62,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000); // let serial settle
   pinMode(SOLAR_RELAY_PIN,OUTPUT);
-
+  
   // Start WiFi
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -71,6 +75,8 @@ void setup() {
   Serial.println("\nConnected to WiFi");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
+
+  temp_sensors.begin();
 
   // ====== HTTP Handlers ======
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
