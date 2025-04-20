@@ -21,7 +21,15 @@ const char* password = "allthethings!";
 const int ONE_WIRE_PIN = 23;
 const int SOLAR_RELAY_PIN = 26;
 const int SUN_PANEL_PIN = 36;
-const float  SUN_ON_LEVEL = 2950.0;
+const int SOLAR_PUMP_OVERRIDE_PIN=22;
+const float MAX_TEMP_F=89.0; //89
+
+//NC switch coupled to ground with input_pullup: 0 = overide enabled, 1 = no override
+const int SOLAR_PUMP_REQUEST_PUMP_OFF=0;
+const int HEATER_PUMP_OFF = 0;
+const int HEATER_PUMP_ON = 1;
+
+const float  SUN_ON_LEVEL = 2850.0; //2950
 const int TEMP_UPDATE_INTERVAL_MILLIS = 2000;
 const int WIFI_CONNECT_INTERVAL_MILLIS = 30000;
 const int NUM_SUN_SAMPLES=50;
@@ -66,6 +74,8 @@ void setup() {
   Serial.begin(115200);
   delay(1000); // let serial settle
   pinMode(SOLAR_RELAY_PIN,OUTPUT);
+  pinMode(SOLAR_PUMP_OVERRIDE_PIN,INPUT_PULLUP);
+
   // Start WiFi
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -183,21 +193,56 @@ void updateTemperature(){
 
 void updateSolarHeater(){
   int rawSunLevel = analogRead(SUN_PANEL_PIN);
+  int solarPumpOverride = digitalRead(SOLAR_PUMP_OVERRIDE_PIN); 
+
   if ( DEBUG ){
     Serial.print("Raw SunLevel: ");Serial.println(rawSunLevel);
+    Serial.print("Pump Override: "); Serial.println(solarPumpOverride);
   }
   
   float sL = (float)(rawSunLevel);
   sunLevelAvg.addValue(sL);
   sunLevel = sunLevelAvg.getAverage();
+
   if ( sunLevel > SUN_ON_LEVEL) {
-    heater_on = 1;
+    if ( tempF <= MAX_TEMP_F){
+      heater_on = HEATER_PUMP_ON;
+    }
+    else{
+      heater_on = HEATER_PUMP_OFF;
+      if ( DEBUG){
+        Serial.println("Heater is disabled: > max temp.");
+      }
+    }
   }
   else{
-    heater_on = 0;
+    heater_on = HEATER_PUMP_OFF;
+    if ( DEBUG){
+      Serial.println("Heater is disabled: Sun not bright enough.");
+    }       
   }
-  digitalWrite(SOLAR_RELAY_PIN,heater_on);
+
+  if ( SOLAR_PUMP_REQUEST_PUMP_OFF != solarPumpOverride ){
+    digitalWrite(SOLAR_RELAY_PIN,heater_on);
+  }
+  else{
+    digitalWrite(SOLAR_RELAY_PIN,HEATER_PUMP_OFF);
+    if ( DEBUG){
+      Serial.println("Heater is disabled: manual override.");
+    }    
+  }
+
+
+
   if ( DEBUG ){
+    Serial.print("Pump Override to Off: ");
+    if ( SOLAR_PUMP_REQUEST_PUMP_OFF == solarPumpOverride){
+      Serial.println("True-- disable pump");
+    }
+    else{
+      Serial.println("False:  pump enabled");
+    }
+
     Serial.print("SunLevel: ");Serial.print(sunLevel);
     Serial.print(" Heater: ");Serial.print(heater_on);
     Serial.print("  Free heap: ");  Serial.print(ESP.getFreeHeap());  
