@@ -22,7 +22,8 @@ const int ONE_WIRE_PIN = 23;
 const int SOLAR_RELAY_PIN = 26;
 const int SUN_PANEL_PIN = 36;
 const float  SUN_ON_LEVEL = 2950.0;
-const int TEMP_UPDATE_INTERVAL_MILLIS = 5000;
+const int TEMP_UPDATE_INTERVAL_MILLIS = 2000;
+const int WIFI_CONNECT_INTERVAL_MILLIS = 30000;
 const int NUM_SUN_SAMPLES=50;
 const int MAIN_TEMP_INDEX=0;
 const bool DEBUG = true;
@@ -34,11 +35,13 @@ float tempF = 0.0;
 float sunLevel = 0;
 unsigned long lastTempUpdate = 0;
 unsigned long lastSolarUpdate = 0;
+unsigned long lastWifiCheck = 0;
 
 AsyncWebServer  server(80);
 RunningAverage sunLevelAvg(NUM_SUN_SAMPLES);
 OneWire oneWire(ONE_WIRE_PIN);
 DallasTemperature temp_sensors(&oneWire);
+portMUX_TYPE myMutex = portMUX_INITIALIZER_UNLOCKED;
 
 // ====== Read Temperature Helper ======
 float readTemperatureC() {
@@ -104,9 +107,20 @@ void setup() {
 
   server.on("/gettemperature", HTTP_GET, [](AsyncWebServerRequest *request){
     char json[512];
+    float localC, localF, localSun;
+    int localHeater;
+
+    portENTER_CRITICAL(&myMutex);
+    localC = tempC;
+    localF = tempF;
+    localSun = sunLevel;
+    localHeater = heater_on;
+    portEXIT_CRITICAL(&myMutex);
+
+
     snprintf(json, sizeof(json),
       "{\"temperature_c\": %.2f, \"temperature_f\": %.2f, \"sun_level\": %.2f, \"heater\": %s, \"heap_free\" : %d }",
-      tempC, tempF, sunLevel, heater_on ? "true" : "false", ESP.getFreeHeap()
+      localC, localF, localSun, localHeater ? "true" : "false", ESP.getFreeHeap()
     );
     request->send(200, "application/json", json);
   });  
@@ -119,9 +133,41 @@ void setup() {
   
 }
 
+
+void ensureWiFiConnected() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi disconnected, trying to reconnect...");
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
+    unsigned long startAttempt = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
+      delay(500);
+      Serial.print(".");
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("Reconnected.");
+    } else {
+      Serial.println("Reconnect failed.");
+    }
+  }else{
+    if ( DEBUG ){
+      Serial.println("Wifi Already Connected");
+    }
+    
+  }
+}
+
 void updateTemperature(){
-  tempC = readTemperatureC();
-  tempF = celsiusToFahrenheit(tempC);
+
+
+  float newC = readTemperatureC();
+  float newF = celsiusToFahrenheit(newC);
+
+  portENTER_CRITICAL(&myMutex);
+  tempC = newC;
+  tempF = newF;
+  portEXIT_CRITICAL(&myMutex);
+
 
   if (DEBUG){
     if (!isnan(tempC)) {
@@ -170,6 +216,10 @@ void loop() {
   if (now - lastSolarUpdate >= TEMP_UPDATE_INTERVAL_MILLIS) {
     lastSolarUpdate = now;
     updateSolarHeater();
+  }
+  if (now - lastWifiCheck >= WIFI_CONNECT_INTERVAL_MILLIS) {
+    lastWifiCheck = now;
+    ensureWiFiConnected();
   }
 
   if (ESP.getFreeHeap() < 10000) {
