@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WebServer.h>
+#include <WebServer.h> 
 #include "RunningAverage.h"
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -15,22 +15,23 @@ const char* ssid = "bluedirt_IOT_2G";
 const char* password = "allthethings!";
 
 // ====== SPI Pin Definitions for MAX6675 on VSPI ======
-const int thermoSCK = 18;
-const int thermoCS  = 5;
-const int thermoSO  = 19;
-const int ONE_WIRE_PIN = GPIO_NUM_39;
+//const int thermoSCK = 18;
+//const int thermoCS  = 5;
+//const int thermoSO  = 19;
+const int ONE_WIRE_PIN = 23;
 const int SOLAR_RELAY_PIN = 26;
-const int SUN_PANEL_PIN = GPIO_NUM_36;
-const float  SUN_ON_LEVEL = 2900.0;
+const int SUN_PANEL_PIN = 36;
+const float  SUN_ON_LEVEL = 3100.0;
 const int TEMP_UPDATE_INTERVAL_MILLIS = 5000;
 const int NUM_SUN_SAMPLES=50;
 const int MAIN_TEMP_INDEX=0;
+const bool DEBUG = true;
 
 //local vars
 int heater_on = 0;
 float tempC = 0.0;
 float tempF = 0.0;
-int sunLevel = 0;
+float sunLevel = 0;
 unsigned long lastTempUpdate = 0;
 unsigned long lastSolarUpdate = 0;
 
@@ -42,9 +43,9 @@ DallasTemperature temp_sensors(&oneWire);
 // ====== Read Temperature Helper ======
 float readTemperatureC() {
   temp_sensors.requestTemperatures();
-  float tC = temp_sensors.requestTemperaturesByIndex(MAIN_TEMP_INDEX);
+  float tC = temp_sensors.getTempCByIndex(MAIN_TEMP_INDEX);
   if (isnan(tC) || tC < -100.0) {
-    Serial.println("Error: Invalid temperature reading");
+    Serial.print("Error: Invalid temperature reading: ");Serial.println(tC);
     return NAN;
   }
   return tC;
@@ -62,7 +63,6 @@ void setup() {
   Serial.begin(115200);
   delay(1000); // let serial settle
   pinMode(SOLAR_RELAY_PIN,OUTPUT);
-  
   // Start WiFi
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -71,10 +71,12 @@ void setup() {
     Serial.print(".");
   }
 
+  if ( DEBUG ){
+    Serial.println("\nConnected to WiFi");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  }
 
-  Serial.println("\nConnected to WiFi");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
 
   temp_sensors.begin();
 
@@ -103,7 +105,7 @@ void setup() {
   server.on("/gettemperature", HTTP_GET, [](AsyncWebServerRequest *request){
     char json[512];
     snprintf(json, sizeof(json),
-      "{\"temperature_c\": %.2f, \"temperature_f\": %.2f, \"sun_level\": %d, \"heater\": %s, \"heap_free\" : %d }",
+      "{\"temperature_c\": %.2f, \"temperature_f\": %.2f, \"sun_level\": %.2f, \"heater\": %s, \"heap_free\" : %d }",
       tempC, tempF, sunLevel, heater_on ? "true" : "false", ESP.getFreeHeap()
     );
     request->send(200, "application/json", json);
@@ -121,30 +123,41 @@ void updateTemperature(){
   tempC = readTemperatureC();
   tempF = celsiusToFahrenheit(tempC);
 
-  if (!isnan(tempC)) {
-    Serial.print("Current Temperature: ");
-    Serial.print(tempC);
-    Serial.print("°C / ");
-    Serial.print(tempF);
-    Serial.println("°F");
-  }  
+  if (DEBUG){
+    if (!isnan(tempC)) {
+      Serial.print("Current Temperature: ");
+      Serial.print(tempC);
+      Serial.print("°C / ");
+      Serial.print(tempF);
+      Serial.println("°F");
+    }  
+  }
+
 }
 
 void updateSolarHeater(){
-  sunLevel = analogRead(SUN_PANEL_PIN);
-  sunLevelAvg.addValue(sunLevel);
-  float currentSunLevelAverage = sunLevelAvg.getAverage();
-  if ( currentSunLevelAverage > SUN_ON_LEVEL) {
+  int rawSunLevel = analogRead(SUN_PANEL_PIN);
+  if ( DEBUG ){
+    Serial.print("Raw SunLevel: ");Serial.println(rawSunLevel);
+  }
+  
+  float sL = (float)(rawSunLevel);
+  sunLevelAvg.addValue(sL);
+  sunLevel = sunLevelAvg.getAverage();
+  if ( sunLevel > SUN_ON_LEVEL) {
     heater_on = 1;
   }
   else{
     heater_on = 0;
   }
   digitalWrite(SOLAR_RELAY_PIN,heater_on);
-  Serial.print("SunLevel: ");Serial.print(currentSunLevelAverage);
-  Serial.print(" Heater: ");Serial.print(heater_on);
-  Serial.print("  Free heap: ");  Serial.print(ESP.getFreeHeap());  
-  Serial.printf("Min free heap: %u\n", esp_get_minimum_free_heap_size());
+  if ( DEBUG ){
+    Serial.print("SunLevel: ");Serial.print(sunLevel);
+    Serial.print(" Heater: ");Serial.print(heater_on);
+    Serial.print("  Free heap: ");  Serial.print(ESP.getFreeHeap());  
+    Serial.printf(" Min free heap: %u\n", esp_get_minimum_free_heap_size());
+  }
+
 }
 
 void loop() {
