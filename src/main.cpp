@@ -22,17 +22,17 @@ const int ONE_WIRE_PIN = 23;
 const int SOLAR_RELAY_PIN = 26;
 const int SUN_PANEL_PIN = 36;
 const int SOLAR_PUMP_OVERRIDE_PIN=22;
-const float MAX_TEMP_F=89.0; //89
+const float MAX_TEMP_F=93.0; //89
 
 //NC switch coupled to ground with input_pullup: 0 = overide enabled, 1 = no override
 const int SOLAR_PUMP_REQUEST_PUMP_OFF=0;
 const int HEATER_PUMP_OFF = 0;
 const int HEATER_PUMP_ON = 1;
 
-const float  SUN_ON_LEVEL = 2850.0; //2950
+const float  SUN_ON_LEVEL = 2500.0; //2950
 const int TEMP_UPDATE_INTERVAL_MILLIS = 2000;
 const int WIFI_CONNECT_INTERVAL_MILLIS = 30000;
-const int NUM_SUN_SAMPLES=50;
+const int NUM_SUN_SAMPLES=80;
 const int MAIN_TEMP_INDEX=0;
 const bool DEBUG = true;
 
@@ -203,9 +203,10 @@ void updateSolarHeater(){
   float sL = (float)(rawSunLevel);
   sunLevelAvg.addValue(sL);
   sunLevel = sunLevelAvg.getAverage();
-
+  Serial.print("Sunlevel At top=");Serial.println(sunLevel);
   if ( sunLevel > SUN_ON_LEVEL) {
     if ( tempF <= MAX_TEMP_F){
+      Serial.println("Temp is below setpoint");
       heater_on = HEATER_PUMP_ON;
     }
     else{
